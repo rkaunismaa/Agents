@@ -1,0 +1,32 @@
+# Environments
+.agents/
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.local
+.envrc
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data caches (committed corpora live in data/, but caches don't)
+data/cache/
+data/embeddings/
+*.chroma/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
