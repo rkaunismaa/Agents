@@ -32,9 +32,10 @@
 #   returning the next message.
 
 # %%
-from _common import cost_banner, load_env
+from _common import chdir_to_repo_root, cost_banner, load_env
 
 load_env()
+chdir_to_repo_root()  # so `data/seed.txt` in Step 4 resolves from repo root
 cost_banner(
     notebook="02 — Tool use, properly",
     estimate="$0.01–0.03 (depends on web search count)",

@@ -5,6 +5,7 @@ loading, rich display, cost banner) is consistent.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,6 +21,14 @@ def load_env() -> None:
         if env.exists():
             load_dotenv(env)
             return
+
+
+def chdir_to_repo_root() -> Path:
+    """Set CWD to the project root so prompts can use repo-relative paths
+    like `data/seed.txt` regardless of where Jupyter launched the kernel."""
+    root = Path(__file__).resolve().parent.parent
+    os.chdir(root)
+    return root
 
 
 def cost_banner(notebook: str, estimate: str, model: str) -> None:
