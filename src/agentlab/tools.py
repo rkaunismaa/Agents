@@ -13,7 +13,7 @@ import typing
 from collections.abc import Callable
 from typing import Any
 
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel
 
 _PY_TO_JSON = {
     int: "integer",
