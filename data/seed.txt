@@ -1,0 +1,7 @@
+The agent loop is the heart of every AI agent: an LLM in a loop with
+tool calls. Each turn the model decides whether to answer or to call
+a tool; if it calls a tool, the runtime executes it and feeds the
+result back. The loop terminates when the model returns end_turn.
+
+This file exists so notebook 02's read_file tool has something real
+to chew on.
