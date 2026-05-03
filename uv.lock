@@ -65,7 +65,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "rich", specifier = ">=13.9.0" },
-    { name = "sentence-transformers", marker = "extra == 'module-b'", specifier = ">=3.0.0" },
+    { name = "sentence-transformers", marker = "extra == 'module-b'", specifier = ">=3.0.0,<6" },
     { name = "tavily-python", marker = "extra == 'web-search'", specifier = ">=0.5.0" },
 ]
 provides-extras = ["dev", "module-b", "module-c", "module-d", "web-search"]
