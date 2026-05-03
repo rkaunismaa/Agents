@@ -91,6 +91,7 @@ class KeyValueMemory:
         return list(self._store.keys())
 
     def save(self, path: Path) -> None:
+        """Persist to JSON. All values must be JSON-serializable; raises TypeError otherwise."""
         Path(path).write_text(json.dumps(self._store, indent=2), encoding="utf-8")
 
     def load(self, path: Path) -> None:
@@ -98,6 +99,8 @@ class KeyValueMemory:
 
 
 class Match(BaseModel):
+    """A semantic-search hit. `score` is cosine similarity in [-1, 1]; higher = more similar."""
+
     text: str
     score: float
     metadata: dict
@@ -128,6 +131,12 @@ class SemanticMemory:
         embedder=None,
         embedder_model: str = "all-MiniLM-L6-v2",
     ) -> None:
+        """Construct a fresh in-process semantic store.
+
+        Note: Uses chromadb.EphemeralClient (process-local). On construction, any
+        existing collection with the same name is dropped. If you swap to
+        PersistentClient later, remove the delete_collection call to avoid data loss.
+        """
         import chromadb
 
         self._client = chromadb.EphemeralClient()
@@ -136,7 +145,10 @@ class SemanticMemory:
             self._client.delete_collection(collection_name)
         except Exception:
             pass
-        self._collection = self._client.create_collection(name=collection_name)
+        self._collection = self._client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
         self._next_id = 0
 
     def add(self, text: str, metadata: dict | None = None) -> str:
@@ -147,7 +159,7 @@ class SemanticMemory:
             ids=[doc_id],
             documents=[text],
             embeddings=[list(embedding)],
-            metadatas=[metadata or {}],
+            metadatas=[metadata] if metadata else None,
         )
         return doc_id
 
@@ -158,10 +170,11 @@ class SemanticMemory:
             n_results=top_k,
         )
         out: list[Match] = []
+        metadatas = result["metadatas"][0] if result["metadatas"] is not None else [None] * len(result["documents"][0])
         for doc, dist, meta in zip(
             result["documents"][0],
             result["distances"][0],
-            result["metadatas"][0],
+            metadatas,
         ):
-            out.append(Match(text=doc, score=float(dist), metadata=meta or {}))
+            out.append(Match(text=doc, score=1.0 - float(dist), metadata=meta or {}))
         return out

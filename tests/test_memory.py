@@ -125,8 +125,22 @@ def test_semantic_memory_query_respects_top_k():
     from agentlab.memory import SemanticMemory
 
     sm = SemanticMemory(collection_name="test_top_k", embedder=_StubEmbedder())
-    for i in range(5):
-        sm.add(f"document number {i}", metadata={"i": i})
+    varied = ["a", "ab", "abc", "abcd", "abcde"]
+    for i, text in enumerate(varied):
+        sm.add(text, metadata={"i": i})
 
-    matches = sm.query("document", top_k=3)
+    matches = sm.query("abc", top_k=3)
     assert len(matches) == 3
+
+
+def test_semantic_memory_add_without_metadata():
+    from agentlab.memory import SemanticMemory
+
+    sm = SemanticMemory(collection_name="test_no_meta", embedder=_StubEmbedder())
+    doc_id = sm.add("no metadata provided")
+
+    assert doc_id == "doc-0"
+    matches = sm.query("no metadata provided", top_k=1)
+    assert len(matches) == 1
+    assert matches[0].text == "no metadata provided"
+    assert matches[0].metadata == {}
