@@ -731,7 +731,7 @@ print(f"\nStage B answer: {answer_b}")
 # %%
 response = client.messages.create(
     model=DEFAULT_MODEL,
-    max_tokens=4096,
+    max_tokens=8192,  # must exceed thinking.budget_tokens; leaves ~4K for the visible answer
     thinking={"type": "enabled", "budget_tokens": 4096},
     system=TOOL_USE_SYSTEM,
     tools=[{"type": "web_search_20250305", "name": "web_search"}],
