@@ -929,8 +929,22 @@ def execute_search_step(step: Step) -> str:
         messages=[{"role": "user", "content": step.args.get("query", step.description)}],
     )
     text = "".join(getattr(b, "text", "") for b in response.content)
+    sources: list[str] = []
+    for block in response.content:
+        if getattr(block, "type", None) != "web_search_tool_result":
+            continue
+        content = getattr(block, "content", None)
+        if not isinstance(content, list):
+            continue
+        for r in content:
+            url = getattr(r, "url", None)
+            title = getattr(r, "title", None) or url
+            if url:
+                sources.append(f"- {title}: {url}")
     if not text.strip() or "no results" in text.lower():
         raise RuntimeError("empty search result")
+    if sources:
+        text = f"{text.strip()}\n\nSources:\n" + "\n".join(sources)
     return text.strip()
 
 
@@ -984,9 +998,18 @@ from agentlab.types import Answer
 
 submit_answer_tool = {
     "name": "submit_answer",
-    "description": "Final answer with citations.",
+    "description": (
+        "Submit your final answer. The summary must be at least one sentence "
+        "and you MUST include at least one citation drawn from the Sources "
+        "listed in the research below. Do not invent URLs."
+    ),
     "input_schema": Answer.model_json_schema(),
 }
+
+SYNTH_SYSTEM = """Synthesize a recommendation from the research below.
+You must call submit_answer exactly once, with citations drawn from the
+'Sources:' lists in the research. Use at least one citation; ideally 2-3.
+Do not invent URLs — only cite URLs that appear in the research."""
 
 
 def synthesize(plan: Plan) -> Answer:
@@ -996,8 +1019,8 @@ def synthesize(plan: Plan) -> Answer:
             body += f"\n## {step.description}\n{step.result}\n"
     response = client.messages.create(
         model=DEFAULT_MODEL,
-        max_tokens=1024,
-        system="Synthesize a recommendation from the research. Cite sources.",
+        max_tokens=2048,
+        system=SYNTH_SYSTEM,
         tools=[submit_answer_tool],
         messages=[{"role": "user", "content": body}],
     )
