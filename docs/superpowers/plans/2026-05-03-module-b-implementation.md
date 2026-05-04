@@ -1130,15 +1130,17 @@ from agentlab.memory import ConversationBuffer
 
 client = get_client()
 
-buf = ConversationBuffer(max_tokens=200)  # tiny on purpose
+buf = ConversationBuffer(max_tokens=80)  # tiny on purpose: forces truncation
 for i in range(8):
     buf.append({"role": "user", "content": f"This is message {i}, which has some words in it for token weight."})
     buf.append({"role": "assistant", "content": f"Acknowledged message {i}."})
 
 print(f"All messages: {len(buf.messages())}")
 truncated = buf.truncate()
-print(f"After truncate: {len(truncated)} (oldest dropped to fit budget)")
-print("Newest content:", truncated[-1]["content"][:60])
+dropped = len(buf.messages()) - len(truncated)
+print(f"After truncate: {len(truncated)} ({dropped} oldest dropped to fit budget)")
+print("Oldest kept:", truncated[0]["content"][:60])
+print("Newest kept:", truncated[-1]["content"][:60])
 
 # %% [markdown]
 # ### Summarization keeps context at a price
@@ -1234,23 +1236,46 @@ submit_answer_tool = {
 }
 
 SPINE_SYSTEM = """You are a research assistant with persistent memory.
-- When the user mentions a preference, project, or fact about themselves, call remember(key, value).
-- When relevant, call recall(key) to look up earlier facts.
-- For factual questions, use web_search.
-- When ready, call submit_answer exactly once."""
+
+Workflow (do these in order, every turn):
+1. If the user mentions a preference, project, or fact about themselves, call remember(key, value) to save it.
+2. If a follow-up question references something earlier, call recall(key) to look it up.
+3. ALWAYS call web_search at least once before answering — even for recommendations or
+   follow-ups, you need fresh sources to cite. Do not skip this step.
+4. Finish by calling submit_answer exactly once with:
+   - summary: 2-4 sentences answering the question (weave in any recalled facts).
+   - citations: list of {url, title, optional quote} drawn from your web_search results.
+     At least one entry; ideally 2-3. URLs must come from web_search — do not invent any.
+5. Do not produce free-form text instead of submit_answer — your final output must be a submit_answer call."""
 
 
 def research_with_memory(question: str, max_turns: int = 6) -> Answer:
+    # Surface what's in memory so the agent doesn't have to guess key names.
+    keys = session_memory.keys()
+    system = SPINE_SYSTEM + (
+        f"\n\nCurrent memory keys (call recall(key) to read each value): {keys}"
+        if keys
+        else "\n\nMemory is currently empty."
+    )
     messages = [{"role": "user", "content": question}]
     tools = registry.schemas() + [
         {"type": "web_search_20250305", "name": "web_search"},
         submit_answer_tool,
     ]
     handlers = registry.handlers()
-    for _ in range(max_turns):
+    for turn in range(max_turns):
         response = client.messages.create(
-            model=DEFAULT_MODEL, max_tokens=2048, system=SPINE_SYSTEM,
+            model=DEFAULT_MODEL, max_tokens=2048, system=system,
             tools=tools, messages=messages,
+        )
+        block_descs = [
+            f"{getattr(b, 'type', '?')}"
+            + (f":{b.name}" if getattr(b, "name", None) else "")
+            for b in response.content
+        ]
+        print(
+            f"  [debug turn {turn}] stop={response.stop_reason} "
+            f"out_tokens={response.usage.output_tokens} blocks={block_descs}"
         )
         for block in response.content:
             if block.type == "tool_use" and block.name == "submit_answer":
