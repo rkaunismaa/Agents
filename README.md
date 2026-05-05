@@ -14,7 +14,7 @@ appear.
 | Module | Notebooks | State |
 |---|---|---|
 | **A · Foundations** | [01 bare agent loop](notebooks/01_bare_agent_loop.ipynb) · [02 tool use](notebooks/02_tool_use.ipynb) · [03 structured outputs](notebooks/03_structured_outputs.ipynb) | ✅ shipped |
-| **B · Workflows** | 04 ReAct · 05 planning · 06 memory · 07 RAG · 08 evals + observability | ⏳ planned |
+| **B · Workflows** | [04 ReAct & extended thinking](notebooks/04_react_and_extended_thinking.ipynb) · [05 planning](notebooks/05_planning_and_decomposition.ipynb) · [06 memory](notebooks/06_memory_primitives.ipynb) · [07 RAG](notebooks/07_rag_for_agents.ipynb) · [08 evals + observability](notebooks/08_evals_and_observability.ipynb) | ✅ shipped |
 | **C · Multi-agent + MCP** | 09 build MCP server · 10 consume MCP · 11 orchestrator + subagents · 12 parallel + durable | ⏳ planned |
 | **D · Autonomous + local** | 13 computer use · 14 local models (Ollama / LM Studio) · 15 capstone | ⏳ planned |
 
@@ -45,6 +45,35 @@ subagents and an MCP-backed corpus.
 
 Full design: [`docs/superpowers/specs/2026-05-02-ai-agents-curriculum-design.md`](docs/superpowers/specs/2026-05-02-ai-agents-curriculum-design.md).
 
+## What Module B teaches
+
+- **[NB 04 — ReAct & extended thinking](notebooks/04_react_and_extended_thinking.ipynb)**
+  Three takes on the ReAct pattern: classic Yao-2022 prompt-parsed
+  loop, then tool-use as ReAct (no parsing), then Claude's extended
+  thinking. Same multi-hop demo task across all three so the
+  tradeoffs are obvious side-by-side.
+- **[NB 05 — Planning & decomposition](notebooks/05_planning_and_decomposition.ipynb)**
+  Plan-then-execute with a Pydantic `Plan` model, a tool-use-coerced
+  planner, an executor, a re-planner on failure, and a synthesizer
+  that returns a structured `Answer`. Demo: "compare httpx, aiohttp,
+  requests; recommend one."
+- **[NB 06 — Memory primitives](notebooks/06_memory_primitives.ipynb)**
+  Three memory shapes (`ConversationBuffer`, `KeyValueMemory`,
+  `SemanticMemory`) live in `agentlab.memory`. The research-assistant
+  spine gets `KeyValueMemory` so it can answer follow-ups about
+  earlier-stated context.
+- **[NB 07 — RAG for agents](notebooks/07_rag_for_agents.ipynb)**
+  Self-referential corpus over `notebooks/_src/*.py` and
+  `docs/superpowers/specs/*.md`. Compares naive top-k RAG (always
+  inject context) with tool-shaped retrieval (the agent decides when
+  to retrieve), showing why the tool shape preserves agency.
+- **[NB 08 — ✦ Evals + observability](notebooks/08_evals_and_observability.ipynb)**
+  Three eval styles on a 10-task spine eval set: deterministic asserts
+  on tool calls + Pydantic shape, LLM-as-judge with rubric,
+  reference-based exact/substring. Pytest suite at
+  `tests/eval/test_research_assistant.py`. OpenTelemetry traces via
+  `ConsoleSpanExporter`, with a Jaeger appendix.
+
 ## Quickstart
 
 Requires Python 3.13 and [uv](https://github.com/astral-sh/uv) ≥ 0.11.
@@ -56,7 +85,7 @@ cd Agents
 # Pin uv to the bundled .agents venv (the project's .envrc does this if you use direnv).
 export UV_PROJECT_ENVIRONMENT=.agents
 
-uv sync --extra dev
+uv sync --extra dev --extra module-b
 
 cp .env.example .env
 # Edit .env and add ANTHROPIC_API_KEY.
@@ -78,9 +107,10 @@ notebooks/_common.py       # shared helpers: load_env, cost_banner, chdir_to_rep
 src/agentlab/              # the small library imported by every notebook
   ├ llm.py                 # Anthropic client wrapper + run_agent_loop
   ├ tools.py               # ToolRegistry + schema generation
-  └ types.py               # Pydantic models (Answer, Citation)
-tests/                     # pytest tests for agentlab
-data/                      # small seed files used by notebooks
+  ├ types.py               # Pydantic models (Answer, Citation)
+  └ memory.py              # ConversationBuffer + KeyValueMemory + SemanticMemory
+tests/                     # pytest tests for agentlab + eval suite (tests/eval/)
+data/                      # small seed files + eval_tasks.jsonl
 mcp_servers/               # MCP servers (added in Module C)
 docs/superpowers/specs/    # design specs
 docs/superpowers/plans/    # implementation plans
@@ -112,9 +142,10 @@ running them in VS Code.
 ## Costs
 
 Each notebook prints a cost banner at the top with an estimate.
-Module A end-to-end is roughly **$0.05–0.10** at current Sonnet/Haiku
-pricing. Module C and the capstone will run higher; those notebooks
-default to Claude Haiku where pedagogically acceptable.
+Module A end-to-end is roughly **$0.05–0.10**; Module B end-to-end is
+**$0.10–0.20** (the eval suite drives most of that — opt in with
+`pytest -m eval`). Module C and the capstone will run higher; those
+notebooks default to Claude Haiku where pedagogically acceptable.
 
 ## License
 
