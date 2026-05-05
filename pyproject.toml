@@ -51,7 +51,10 @@ packages = ["src/agentlab"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-ra -q"
+addopts = "-ra -q -m 'not eval'"
+markers = [
+    "eval: end-to-end agent evaluation tests (slow, costs money). Opt in: pytest -m eval",
+]
 
 [tool.jupytext]
 formats = "notebooks///ipynb,notebooks/_src///py:percent"
