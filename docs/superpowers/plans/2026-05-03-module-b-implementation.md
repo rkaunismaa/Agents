@@ -1492,10 +1492,15 @@ registry = ToolRegistry()
 
 @registry.tool(description="Search the curriculum's own source code and specs for relevant context. Use when the question is about how this codebase works.")
 def search_notes(query: str) -> str:
-    matches = corpus.query(query, top_k=3)
-    return "\n\n".join(
-        f"[{m.metadata.get('source')}] {m.text[:600]}" for m in matches
-    )
+    matches = corpus.query(query, top_k=5)
+    blocks = []
+    for m in matches:
+        src = m.metadata.get("source")
+        idx = m.metadata.get("chunk_index")
+        # Synthesize an HttpUrl-shaped identifier so callers can cite it via Citation.url.
+        url = f"https://corpus.local/{src}#chunk={idx}"
+        blocks.append(f"[source url: {url}]\n[path: {src}]\n{m.text}")
+    return "\n\n".join(blocks)
 
 
 from agentlab.llm import run_agent_loop
@@ -1515,7 +1520,7 @@ for q in [
         user_message=q,
         tools=registry.schemas(),
         tool_handlers=registry.handlers(),
-        max_turns=4,
+        max_turns=8,
     )
     print(f"Turns: {result.turns}")
     print(f"Answer: {result.final_text[:400]}")
@@ -1536,7 +1541,11 @@ from agentlab.types import Answer
 
 submit_answer_tool = {
     "name": "submit_answer",
-    "description": "Submit final answer with citations to the chunks you used.",
+    "description": (
+        "Submit final answer with citations to the chunks you used. "
+        "Each citation's url MUST be the 'source url' shown above each chunk in "
+        "the search results. At least one citation is required."
+    ),
     "input_schema": Answer.model_json_schema(),
 }
 
@@ -1545,18 +1554,32 @@ def cited_research(question: str, max_turns: int = 6) -> Answer:
     messages = [{"role": "user", "content": question}]
     tools = registry.schemas() + [submit_answer_tool]
     handlers = registry.handlers()
-    for _ in range(max_turns):
+    for turn in range(max_turns):
         response = client.messages.create(
-            model=DEFAULT_MODEL, max_tokens=1024,
+            model=DEFAULT_MODEL, max_tokens=4096,
             system=(
-                "Answer questions about this codebase. Use search_notes to find "
-                "relevant chunks. Cite the source path and a short quote in your "
-                "Answer.citations. Always call submit_answer to finish."
+                "Answer questions about this codebase.\n"
+                "1. Call search_notes to find relevant chunks.\n"
+                "2. Each chunk in the search results begins with a `[source url: ...]` "
+                "line — use exactly that URL as the citation url. Use the file path "
+                "as the citation title, and a short verbatim snippet as the quote.\n"
+                "3. Always finish by calling submit_answer with at least one citation. "
+                "Do not invent URLs — only cite urls that appeared in the search results."
             ),
             tools=tools, messages=messages,
         )
+        block_descs = [
+            f"{getattr(b, 'type', '?')}"
+            + (f":{b.name}" if getattr(b, "name", None) else "")
+            for b in response.content
+        ]
+        print(
+            f"  [debug turn {turn}] stop={response.stop_reason} "
+            f"out_tokens={response.usage.output_tokens} blocks={block_descs}"
+        )
         for block in response.content:
             if block.type == "tool_use" and block.name == "submit_answer":
+                print(f"  [debug] submit_answer keys={list(block.input.keys())}")
                 return Answer.model_validate(block.input)
         tool_results = []
         for block in response.content:
