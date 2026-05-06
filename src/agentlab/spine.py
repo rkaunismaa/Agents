@@ -15,7 +15,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 DispatchSync = Callable[["Subagent", str], str]
 DispatchAsync = Callable[["Subagent", str], Awaitable[str]]
@@ -121,9 +121,12 @@ class Orchestrator:
         with the same `run_id` — it skips cached workers and runs the
         rest.
         """
+        path = self._checkpoint_path(run_id)
+        if path is None or not path.exists():
+            raise FileNotFoundError(f"No checkpoint file for run_id={run_id}")
         cached = self._load_checkpoint(run_id)
         if not cached:
-            raise FileNotFoundError(f"No checkpoint for run_id={run_id}")
+            raise ValueError(f"Checkpoint for run_id={run_id} exists but is empty")
         return [cached[w.role] for w in self.workers if w.role in cached]
 
     # ── checkpoint internals ───────────────────────────────────────
@@ -131,7 +134,6 @@ class Orchestrator:
     def _checkpoint_path(self, run_id: str) -> Path | None:
         if self.checkpoint_dir is None:
             return None
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         return self.checkpoint_dir / f"{run_id}.jsonl"
 
     def _load_checkpoint(self, run_id: str) -> dict[str, WorkerResult]:
@@ -153,6 +155,7 @@ class Orchestrator:
         path = self._checkpoint_path(run_id)
         if path is None:
             return
+        path.parent.mkdir(parents=True, exist_ok=True)
         entry = {
             "run_id": run_id,
             "role": wr.role,
