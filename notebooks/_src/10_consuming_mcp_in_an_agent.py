@@ -43,8 +43,6 @@ cost_banner(
 # server's capabilities.
 
 # %%
-import asyncio
-
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -98,9 +96,10 @@ await show_discovered_tools()
 #
 # We adapt NB 02's `run_agent_loop` shape: when the model emits a
 # `tool_use` block whose name is one of the MCP-discovered tools,
-# route it through `MCPToolRouter.call(...)`. Local tools (e.g.
-# `web_search`) work alongside MCP tools — same registry shape, just
-# routed differently.
+# route it through `MCPToolRouter.call(...)`. The `else` branch is a
+# safety net that returns an `unknown tool` error — mixing MCP tools
+# with locally-defined tools is left to NB 12, which combines both
+# registries in the durable spine.
 
 # %%
 from agentlab.llm import DEFAULT_MODEL, get_client
