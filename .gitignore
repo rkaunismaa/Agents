@@ -30,3 +30,7 @@ data/embeddings/
 .DS_Store
 .vscode/
 .idea/
+
+# Module C runtime artifacts
+/data/notes.json
+/data/checkpoints/
