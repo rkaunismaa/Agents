@@ -247,8 +247,6 @@ print(f"\nCitations: {len(answer_a.citations)}")
 # below.
 
 # %%
-import json
-
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AgentDefinition
 
 # Define the three workers as named subagents the orchestrator can dispatch.
@@ -286,19 +284,22 @@ SDK_OPTIONS = ClaudeAgentOptions(
 
 async def run_orchestrator_sdk(question: str) -> str:
     """SDK-orchestrated version. Returns the final assistant text."""
-    final_text_parts: list[str] = []
+    last_text: str = ""
     async with ClaudeSDKClient(options=SDK_OPTIONS) as sdk:
         await sdk.query(question)
         async for message in sdk.receive_response():
-            # The SDK streams structured messages. We accumulate text from
-            # the final assistant message; subagent activity is internal.
-            kind = type(message).__name__
-            if kind == "AssistantMessage":
+            # Track the *last* AssistantMessage rather than accumulating all
+            # of them — intermediate orchestrator turns (if the SDK surfaces
+            # them) would otherwise corrupt the final answer.
+            if type(message).__name__ == "AssistantMessage":
+                parts = []
                 for block in getattr(message, "content", []) or []:
                     text = getattr(block, "text", None)
                     if text:
-                        final_text_parts.append(text)
-    return "\n".join(final_text_parts).strip()
+                        parts.append(text)
+                if parts:
+                    last_text = "\n".join(parts)
+    return last_text.strip()
 
 
 print("=== Stage B: claude-agent-sdk ===\n")
@@ -311,7 +312,7 @@ print(sdk_text[:1200])
 #
 # | Aspect | Stage A (scratch) | Stage B (SDK) |
 # |---|---|---|
-# | Lines of code | ~120 | ~30 |
+# | Lines of code | ~120 | ~50 |
 # | Visible in notebook | every dispatch + every worker turn | only final assistant message |
 # | Debuggable | step into `run_subagent` | breakpoint via SDK hooks |
 # | Dispatch loop | hand-rolled tool routing | SDK manages |
