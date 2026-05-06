@@ -31,6 +31,8 @@ data/embeddings/
 .vscode/
 .idea/
 
+ClaudeResume.txt
+
 # Module C runtime artifacts
 /data/notes.json
 /data/checkpoints/
