@@ -59,7 +59,6 @@ class _FakeSession:
 # ── mcp_tools_to_anthropic ─────────────────────────────────────────
 
 
-@pytest.mark.asyncio
 async def test_mcp_tools_to_anthropic_basic():
     """Each MCP Tool maps to an Anthropic tool dict with the same schema."""
     session = _FakeSession(
@@ -104,7 +103,6 @@ async def test_mcp_tools_to_anthropic_basic():
     assert result[1]["input_schema"] == {"type": "object", "properties": {}}
 
 
-@pytest.mark.asyncio
 async def test_mcp_tools_to_anthropic_handles_missing_description():
     """A None or missing description becomes the empty string (Anthropic requires str)."""
     session = _FakeSession(
@@ -120,7 +118,6 @@ async def test_mcp_tools_to_anthropic_handles_missing_description():
 # ── MCPToolRouter ──────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
 async def test_router_call_returns_text_content():
     """Successful call returns the joined text content blocks."""
     session = _FakeSession(
@@ -137,7 +134,6 @@ async def test_router_call_returns_text_content():
     assert session.calls == [("add_note", {"key": "h", "content": "hello"})]
 
 
-@pytest.mark.asyncio
 async def test_router_call_concatenates_multiple_text_blocks():
     """If the server returns multiple text blocks, the router joins them with newlines."""
     session = _FakeSession(
@@ -158,7 +154,6 @@ async def test_router_call_concatenates_multiple_text_blocks():
     assert result == "key1\nkey2"
 
 
-@pytest.mark.asyncio
 async def test_router_call_error_result_raises():
     """isError=True surfaces as a RuntimeError carrying the error text."""
     session = _FakeSession(
@@ -176,7 +171,6 @@ async def test_router_call_error_result_raises():
         await router.call("get_note", {"key": "missing"})
 
 
-@pytest.mark.asyncio
 async def test_router_knows_tool():
     """`knows(name)` is True iff the session listed that tool."""
     session = _FakeSession(
