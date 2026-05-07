@@ -141,7 +141,9 @@ breaks: missing fields, extra fields, wrong types.
 
 **Step 4 — Quantitative eval.** Run eval tasks t01 (Module A), t05 (Module B),
 t11 (Module C) from `data/eval_tasks.jsonl` against both Claude and llama3.2
-using the existing eval harness. Build a comparison table:
+inline in the notebook (the pytest harness is hardwired to the Anthropic client
+and is not used here). Measure correctness and latency per call. Build a
+comparison table:
 
 | Task | Model | Correct | Latency |
 |------|-------|---------|---------|
