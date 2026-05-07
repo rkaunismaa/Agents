@@ -15,7 +15,7 @@ appear.
 |---|---|---|
 | **A · Foundations** | [01 bare agent loop](notebooks/01_bare_agent_loop.ipynb) · [02 tool use](notebooks/02_tool_use.ipynb) · [03 structured outputs](notebooks/03_structured_outputs.ipynb) | ✅ shipped |
 | **B · Workflows** | [04 ReAct & extended thinking](notebooks/04_react_and_extended_thinking.ipynb) · [05 planning](notebooks/05_planning_and_decomposition.ipynb) · [06 memory](notebooks/06_memory_primitives.ipynb) · [07 RAG](notebooks/07_rag_for_agents.ipynb) · [08 evals + observability](notebooks/08_evals_and_observability.ipynb) | ✅ shipped |
-| **C · Multi-agent + MCP** | 09 build MCP server · 10 consume MCP · 11 orchestrator + subagents · 12 parallel + durable | ⏳ planned |
+| **C · Multi-agent + MCP** | [09 build MCP server](notebooks/09_building_an_mcp_server.ipynb) · [10 consume MCP](notebooks/10_consuming_mcp_in_an_agent.ipynb) · [11 orchestrator + subagents](notebooks/11_orchestrator_and_subagents.ipynb) · [12 ✦ parallel + durable](notebooks/12_parallel_and_durable.ipynb) | ✅ shipped |
 | **D · Autonomous + local** | 13 computer use · 14 local models (Ollama / LM Studio) · 15 capstone | ⏳ planned |
 
 A "research assistant" spine project recurs at NB 03, 08, 12, and 15 to
@@ -74,6 +74,44 @@ Full design: [`docs/superpowers/specs/2026-05-02-ai-agents-curriculum-design.md`
   `tests/eval/test_research_assistant.py`. OpenTelemetry traces via
   `ConsoleSpanExporter`, with a Jaeger appendix.
 
+## What Module C teaches
+
+- **[NB 09 — Building an MCP server](notebooks/09_building_an_mcp_server.ipynb)**
+  Builds the same notes server twice: first using the low-level `Server`
+  class (~80 lines, protocol fully visible), then using `FastMCP`
+  (decorator-based, ~30 lines). Adds a Prompt to show the third MCP
+  primitive. Appendix covers Streamable HTTP transport.
+- **[NB 10 — Consuming MCP in an agent](notebooks/10_consuming_mcp_in_an_agent.ipynb)**
+  Wires an MCP client into the agent loop via `MCPToolRouter`
+  (extracted to `agentlab.mcp_helpers`). Auto-discovers tools from the
+  server, routes Claude's tool calls through `ClientSession`, and
+  demonstrates the MCP-earning-its-keep moment: notes written in one
+  session are still there after a cold-started server.
+- **[NB 11 — Orchestrator + sequential subagents](notebooks/11_orchestrator_and_subagents.ipynb)**
+  Builds orchestrator-worker from scratch (Stage A) then rebuilds the
+  same shape with the Claude Agent SDK (Stage B) so the abstraction is
+  visible. Three roles — researcher, summarizer, ranker — with
+  token-isolated contexts. The `Orchestrator` + `Subagent` types are
+  extracted to `agentlab.spine`.
+- **[NB 12 — ✦ Parallel + durable spine](notebooks/12_parallel_and_durable.ipynb)**
+  Closes the spine progression. Extends `Orchestrator` with
+  `asyncio.gather` fan-out, per-worker `asyncio.wait_for` cancellation,
+  and JSONL checkpointing (success-only, so failed workers retry on
+  re-run). Demonstrates MCP-backed persistence (checkpoint → notes
+  server survives kernel restart) and OTel span trees
+  (`agent.run → subagent.{role} → llm.complete`).
+
+**Design decisions made in Module C:**
+- `MCPToolRouter` discovered from `ClientSession` rather than hard-coded
+  tool lists — keeps the agent loop MCP-server-agnostic.
+- Manual orchestrator preferred over the Agent SDK for NB 12 because
+  explicit task handles make cancellation and checkpointing
+  straightforward; constraint-fit, not framework-rejection.
+- Checkpoint semantics: only successful results are cached, so partial
+  failures auto-retry on the next `run_async` with the same `run_id`.
+- Rate-limit backoff uses jitter (`delay + uniform(0, 0.5×delay)`) to
+  desynchronise parallel workers and avoid synchronized retry storms.
+
 ## Quickstart
 
 Requires Python 3.13 and [uv](https://github.com/astral-sh/uv) ≥ 0.11.
@@ -85,7 +123,7 @@ cd Agents
 # Pin uv to the bundled .agents venv (the project's .envrc does this if you use direnv).
 export UV_PROJECT_ENVIRONMENT=.agents
 
-uv sync --extra dev --extra module-b
+uv sync --extra dev --extra module-b --extra module-c
 
 cp .env.example .env
 # Edit .env and add ANTHROPIC_API_KEY.
@@ -108,7 +146,9 @@ src/agentlab/              # the small library imported by every notebook
   ├ llm.py                 # Anthropic client wrapper + run_agent_loop
   ├ tools.py               # ToolRegistry + schema generation
   ├ types.py               # Pydantic models (Answer, Citation)
-  └ memory.py              # ConversationBuffer + KeyValueMemory + SemanticMemory
+  ├ memory.py              # ConversationBuffer + KeyValueMemory + SemanticMemory
+  ├ mcp_helpers.py         # MCPToolRouter — auto-discovers + routes MCP tool calls
+  └ spine.py               # Orchestrator + Subagent + WorkerResult (multi-agent spine)
 tests/                     # pytest tests for agentlab + eval suite (tests/eval/)
 data/                      # small seed files + eval_tasks.jsonl
 mcp_servers/               # MCP servers (added in Module C)
@@ -144,8 +184,9 @@ running them in VS Code.
 Each notebook prints a cost banner at the top with an estimate.
 Module A end-to-end is roughly **$0.05–0.10**; Module B end-to-end is
 **$0.10–0.20** (the eval suite drives most of that — opt in with
-`pytest -m eval`). Module C and the capstone will run higher; those
-notebooks default to Claude Haiku where pedagogically acceptable.
+`pytest -m eval`); Module C end-to-end is **$0.15–0.25** (the parallel
+fan-out runs in NB 12 are the expensive steps). Module D and the
+capstone will run higher.
 
 ## License
 
