@@ -44,9 +44,9 @@ class Orchestrator:
       requires `dispatch_async` (awaitable callable)
 
     Optional checkpointing: pass `checkpoint_dir` and a `run_id`. Each
-    worker's WorkerResult is appended to `checkpoint_dir/<run_id>.jsonl`
-    on completion; calling `run_async` again with the same `run_id`
-    skips workers already in the checkpoint.
+    successful worker's result is appended to `checkpoint_dir/<run_id>.jsonl`;
+    failed workers are not cached so they are retried on the next call with
+    the same `run_id`.
     """
 
     def __init__(
@@ -98,6 +98,7 @@ class Orchestrator:
                     self.dispatch_async(worker, question), timeout=worker_timeout
                 )
                 wr = WorkerResult(role=worker.role, result=text, error=None)
+                self._append_checkpoint(run_id, wr)  # only cache successes
             except asyncio.TimeoutError:
                 wr = WorkerResult(
                     role=worker.role,
@@ -109,7 +110,6 @@ class Orchestrator:
                 raise
             except Exception as exc:
                 wr = WorkerResult(role=worker.role, result=None, error=repr(exc))
-            self._append_checkpoint(run_id, wr)
             return wr
 
         return await asyncio.gather(*(_one(w) for w in self.workers))
