@@ -16,7 +16,7 @@ appear.
 | **A · Foundations** | [01 bare agent loop](notebooks/01_bare_agent_loop.ipynb) · [02 tool use](notebooks/02_tool_use.ipynb) · [03 structured outputs](notebooks/03_structured_outputs.ipynb) | ✅ shipped |
 | **B · Workflows** | [04 ReAct & extended thinking](notebooks/04_react_and_extended_thinking.ipynb) · [05 planning](notebooks/05_planning_and_decomposition.ipynb) · [06 memory](notebooks/06_memory_primitives.ipynb) · [07 RAG](notebooks/07_rag_for_agents.ipynb) · [08 evals + observability](notebooks/08_evals_and_observability.ipynb) | ✅ shipped |
 | **C · Multi-agent + MCP** | [09 build MCP server](notebooks/09_building_an_mcp_server.ipynb) · [10 consume MCP](notebooks/10_consuming_mcp_in_an_agent.ipynb) · [11 orchestrator + subagents](notebooks/11_orchestrator_and_subagents.ipynb) · [12 ✦ parallel + durable](notebooks/12_parallel_and_durable.ipynb) | ✅ shipped |
-| **D · Autonomous + local** | 13 computer use · 14 local models (Ollama / LM Studio) · 15 capstone | ⏳ planned |
+| **D · Autonomous + local** | [13 computer use](notebooks/13_computer_use.ipynb) · [14 local models](notebooks/14_running_locally.ipynb) · [15 ✦ capstone](notebooks/15_capstone_research_assistant.ipynb) | ✅ shipped |
 
 A "research assistant" spine project recurs at NB 03, 08, 12, and 15 to
 integrate the patterns. Today (NB 03) it returns Pydantic-validated
@@ -112,6 +112,27 @@ Full design: [`docs/superpowers/specs/2026-05-02-ai-agents-curriculum-design.md`
 - Rate-limit backoff uses jitter (`delay + uniform(0, 0.5×delay)`) to
   desynchronise parallel workers and avoid synchronized retry storms.
 
+## What Module D teaches
+
+- **[NB 13 — Computer use](notebooks/13_computer_use.ipynb)**
+  Starts Anthropic's reference Docker container as a sandboxed virtual
+  desktop. The `claude_cu_loop` function handles the screenshot→action
+  cycle: Claude receives PNG images, returns `computer` tool-use blocks,
+  and the loop executes click/type/key via `docker exec xdotool`. Three
+  tool types covered: `computer_20241022`, `text_editor_20241022`,
+  `bash_20241022`.
+- **[NB 14 — Running locally](notebooks/14_running_locally.ipynb)**
+  Swaps `get_client()` for an `openai.OpenAI` client pointed at
+  `localhost:11434` (Ollama). Compares tool-use compliance, structured
+  output reliability, and response quality on three eval tasks side by
+  side (Claude vs `llama3.2`). LM Studio shown as a one-line endpoint
+  swap — the code is identical.
+- **[NB 15 — ✦ Capstone](notebooks/15_capstone_research_assistant.ipynb)**
+  Graduates the spine to `research_assistant.py` — a `typer` CLI at the
+  repo root. `--run-id` resumes from JSONL checkpoint; `--trace` wires
+  OTel spans; `--model` and `--checkpoint-dir` are env-overridable. The
+  notebook runs the eval suite via subprocess as the final green-check.
+
 ## Quickstart
 
 Requires Python 3.13 and [uv](https://github.com/astral-sh/uv) ≥ 0.11.
@@ -123,7 +144,7 @@ cd Agents
 # Pin uv to the bundled .agents venv (the project's .envrc does this if you use direnv).
 export UV_PROJECT_ENVIRONMENT=.agents
 
-uv sync --extra dev --extra module-b --extra module-c
+uv sync --extra dev --extra module-b --extra module-c --extra module-d
 
 cp .env.example .env
 # Edit .env and add ANTHROPIC_API_KEY.
@@ -149,6 +170,7 @@ src/agentlab/              # the small library imported by every notebook
   ├ memory.py              # ConversationBuffer + KeyValueMemory + SemanticMemory
   ├ mcp_helpers.py         # MCPToolRouter — auto-discovers + routes MCP tool calls
   └ spine.py               # Orchestrator + Subagent + WorkerResult (multi-agent spine)
+research_assistant.py      # capstone CLI — typer wrapper around agentlab.spine
 tests/                     # pytest tests for agentlab + eval suite (tests/eval/)
 data/                      # small seed files + eval_tasks.jsonl
 mcp_servers/               # MCP servers (added in Module C)
@@ -185,8 +207,8 @@ Each notebook prints a cost banner at the top with an estimate.
 Module A end-to-end is roughly **$0.05–0.10**; Module B end-to-end is
 **$0.10–0.20** (the eval suite drives most of that — opt in with
 `pytest -m eval`); Module C end-to-end is **$0.15–0.25** (the parallel
-fan-out runs in NB 12 are the expensive steps). Module D and the
-capstone will run higher.
+fan-out runs in NB 12 are the expensive steps). Module D end-to-end is **$0.20–0.40** (computer use image tokens in NB 13
+and the eval suite in NB 15 drive most of that).
 
 ## License
 
