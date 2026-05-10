@@ -40,6 +40,7 @@ module-c = [
 ]
 module-d = [
     { name = "openai" },
+    { name = "typer" },
 ]
 web-search = [
     { name = "tavily-python" },
@@ -49,7 +50,7 @@ web-search = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39.0" },
     { name = "chromadb", marker = "extra == 'module-b'", specifier = ">=0.5.0" },
-    { name = "claude-agent-sdk", marker = "extra == 'module-c'", specifier = ">=0.1.0" },
+    { name = "claude-agent-sdk", marker = "extra == 'module-c'", specifier = ">=0.1.72,<0.2.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.0" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.3.0" },
@@ -67,6 +68,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.9.0" },
     { name = "sentence-transformers", marker = "extra == 'module-b'", specifier = ">=3.0.0,<6" },
     { name = "tavily-python", marker = "extra == 'web-search'", specifier = ">=0.5.0" },
+    { name = "typer", marker = "extra == 'module-d'", specifier = ">=0.12.0" },
 ]
 provides-extras = ["dev", "module-b", "module-c", "module-d", "web-search"]
 
