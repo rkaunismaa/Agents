@@ -19,7 +19,7 @@ appear.
 | **D · Autonomous + local** | [13 computer use](notebooks/13_computer_use.ipynb) · [14 local models](notebooks/14_running_locally.ipynb) · [15 ✦ capstone](notebooks/15_capstone_research_assistant.ipynb) | ✅ shipped |
 
 A "research assistant" spine project recurs at NB 03, 08, 12, and 15 to
-integrate the patterns. Today (NB 03) it returns Pydantic-validated
+integrate the patterns. At NB 03 it returns Pydantic-validated
 `Answer` objects with citations; by NB 15 it's a deployable script with
 subagents and an MCP-backed corpus.
 

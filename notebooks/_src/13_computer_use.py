@@ -224,7 +224,7 @@ ipy_display(Image(data=take_screenshot()))  # Final desktop state
 
 # %%
 subprocess.run(["docker", "stop", CONTAINER_NAME], check=True)
-print("Container stopped and removed.")
+print("Container stopped.")
 
 # %% [markdown]
 # ## Reflect
