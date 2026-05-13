@@ -178,6 +178,28 @@ docs/superpowers/specs/    # design specs
 docs/superpowers/plans/    # implementation plans
 ```
 
+## How `agentlab` was built
+
+The library in `src/agentlab/` was not written up front. It grew incrementally
+across modules, extracted from notebooks only after a pattern had been proven
+by hand. Every file was generated test-first (TDD): tests written before
+implementation, then implementation written to pass the tests. Nothing was
+added speculatively.
+
+| File | Introduced | Why it was extracted |
+|------|-----------|----------------------|
+| `types.py` | Module A · NB 03 | `Citation` and `Answer` Pydantic models for the research-assistant spine. Defined once so every later notebook imports the same schema instead of redefining it. |
+| `llm.py` | Module A · NB 02 | `get_client()` (API key guard) and `run_agent_loop()` (the while-loop abstraction). NB 01 deliberately re-implements the loop by hand so the learner sees what's inside; NB 02 onwards use the extracted version. |
+| `tools.py` | Module A · NB 02 | `ToolRegistry` (decorator → JSON schema) and a standalone `@tool` decorator. Removes hand-rolled schema boilerplate from every notebook that defines a tool. |
+| `memory.py` | Module B · NB 06 | `ConversationBuffer` (token-bounded), `KeyValueMemory` (dict + JSON persistence), `SemanticMemory` (Chroma + sentence-transformers). Three shapes in one file because NB 06 compares them side by side. |
+| `mcp_helpers.py` | Module C · NB 10 | `mcp_tools_to_anthropic()` and `MCPToolRouter`. Extracted from NB 10 so the MCP client wiring (auto-discover → route → surface errors) is reusable without copy-pasting. |
+| `spine.py` | Module C · NB 11–12 | `Subagent`, `Orchestrator`, `WorkerResult`. First extracted from NB 11 (sequential orchestrator); extended in NB 12 with `asyncio.gather` fan-out, per-worker `asyncio.wait_for` cancellation, and JSONL checkpointing. |
+
+**The pattern throughout:** write the concept by hand in a notebook cell, make
+it work, understand it, then extract it into the library with tests. The
+library is the distilled result of that process — not a framework that was
+designed ahead of time.
+
 ## Editing notebooks
 
 Notebook content is canonical in `notebooks/_src/*.py` (jupytext
