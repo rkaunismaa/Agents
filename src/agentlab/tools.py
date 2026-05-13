@@ -5,6 +5,13 @@ it with ``@registry.tool(...)``. The registry inspects the signature
 (or an explicit Pydantic model) to produce the JSON schema Anthropic's
 API expects, and exposes both ``.schemas()`` and ``.handlers()`` for
 use with ``agentlab.llm.run_agent_loop``.
+
+Two entry points are provided:
+  - ``ToolRegistry`` — accumulates multiple tools; use when building a
+    coherent tool set to pass to an agent loop.
+  - ``@tool`` (module-level decorator) — attaches schema metadata to a
+    single function without a registry instance; use for one-off tools
+    defined inline in a notebook cell.
 """
 from __future__ import annotations
 
@@ -37,17 +44,27 @@ def _python_type_to_jsonschema(annotation: Any) -> dict[str, Any]:
     if origin is dict:
         return {"type": "object"}
     if origin is typing.Union:
+        # Python represents `Optional[X]` as `Union[X, None]`. We extract
+        # the non-None type and return its schema. This means a parameter
+        # annotated `str | None = None` produces {"type": "string"} rather
+        # than failing or emitting a oneOf. The None-ness is captured by the
+        # parameter having a default; we don't need it in the JSON schema.
         non_none = [a for a in typing.get_args(annotation) if a is not type(None)]
         if len(non_none) == 1:
             return _python_type_to_jsonschema(non_none[0])
     if annotation in _PY_TO_JSON:
         return {"type": _PY_TO_JSON[annotation]}
-    return {"type": "string"}  # safe default
+    # Unknown annotation (custom class, TypeVar, etc.). Fall back to string
+    # rather than crashing. The notebook author can override with input_model=
+    # when they need precise schema control for complex types.
+    return {"type": "string"}
 
 
 def _schema_from_signature(fn: Callable[..., Any]) -> dict[str, Any]:
     sig = inspect.signature(fn)
-    # Use get_type_hints to resolve string annotations (PEP 563 / from __future__ import annotations)
+    # get_type_hints resolves forward references and PEP 563 stringified
+    # annotations (from __future__ import annotations). inspect.signature
+    # alone returns strings for those; get_type_hints gives us real types.
     try:
         hints = typing.get_type_hints(fn)
     except Exception:
@@ -55,10 +72,13 @@ def _schema_from_signature(fn: Callable[..., Any]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
     for param_name, param in sig.parameters.items():
+        # Skip *args and **kwargs; they have no fixed schema.
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
             continue
         annotation = hints.get(param_name, param.annotation)
         properties[param_name] = _python_type_to_jsonschema(annotation)
+        # Parameters without a default are required. Parameters with a
+        # default (including None for Optional) are optional in the schema.
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
     schema: dict[str, Any] = {"type": "object", "properties": properties}
@@ -69,7 +89,10 @@ def _schema_from_signature(fn: Callable[..., Any]) -> dict[str, Any]:
 
 def _schema_from_pydantic_model(model: type[BaseModel]) -> dict[str, Any]:
     schema = model.model_json_schema()
-    # Anthropic accepts standard JSON schema; trim Pydantic's $defs unless used.
+    # Pydantic adds a top-level "title" key (the class name). Anthropic's API
+    # ignores it but some downstream JSON schema validators treat it as a
+    # required field and reject schemas that include it. Strip it to be safe.
+    # We intentionally keep "$defs" if present — nested models need them.
     schema.pop("title", None)
     return schema
 
@@ -95,6 +118,9 @@ class ToolRegistry:
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or fn.__name__
+            # Duplicate registration is almost always a bug (copy-paste, re-run
+            # of a notebook cell). Raise immediately rather than silently
+            # overwriting the earlier handler.
             if tool_name in self._entries:
                 raise ValueError(f"Tool {tool_name!r} is already registered.")
 
@@ -140,6 +166,10 @@ def tool(
             if input_model is not None
             else _schema_from_signature(fn)
         )
+        # Attach schema metadata directly to the function object so the
+        # caller can pass `fn.tool_schema` to the API without needing a
+        # registry instance. This is convenient for one-off notebook tools
+        # but doesn't support the .schemas()/.handlers() pattern.
         fn.tool_name = tool_name  # type: ignore[attr-defined]
         fn.tool_schema = {  # type: ignore[attr-defined]
             "name": tool_name,

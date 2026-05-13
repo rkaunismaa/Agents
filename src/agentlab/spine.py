@@ -21,6 +21,10 @@ DispatchSync = Callable[["Subagent", str], str]
 DispatchAsync = Callable[["Subagent", str], Awaitable[str]]
 
 
+# frozen=True makes Subagent immutable and hashable. A worker definition is a
+# value object: the role name and system prompt identify *what* a worker is,
+# not mutable state. Freezing makes accidental mutation impossible and allows
+# Subagent instances to be used as dict keys or in sets.
 @dataclass(frozen=True)
 class Subagent:
     """A worker definition: a role name + the system prompt that role uses."""
@@ -58,6 +62,10 @@ class Orchestrator:
     ):
         if dispatch is None and dispatch_async is None:
             raise ValueError("Provide at least one of dispatch / dispatch_async")
+        # Dispatch is injected rather than hardcoded to a Claude API call.
+        # This means the Orchestrator knows nothing about Claude: any callable
+        # (worker, task) -> str works. Tests inject a synchronous echo function
+        # without mocking the SDK; notebooks inject a real Claude call.
         self.workers = list(workers)
         self.dispatch = dispatch
         self.dispatch_async = dispatch_async
@@ -66,6 +74,9 @@ class Orchestrator:
     # ── sync ───────────────────────────────────────────────────────
 
     def run_sync(self, question: str) -> list[WorkerResult]:
+        # run_sync exists for NB 11 (sequential orchestrator). NB 12 uses
+        # run_async for parallel fan-out. Both modes coexist so the notebooks
+        # can show the progression from sequential to parallel.
         if self.dispatch is None:
             raise RuntimeError("run_sync requires `dispatch` (sync callable)")
         results: list[WorkerResult] = []
@@ -87,10 +98,17 @@ class Orchestrator:
     ) -> list[WorkerResult]:
         if self.dispatch_async is None:
             raise RuntimeError("run_async requires `dispatch_async` (awaitable callable)")
+        # Auto-generate a short run_id if none provided. hex[:8] = 32-bit
+        # random ID; collision probability is negligible for the number of runs
+        # in a single session, and it's short enough to read in a filename.
         run_id = run_id or uuid.uuid4().hex[:8]
         cached = self._load_checkpoint(run_id)
 
         async def _one(worker: Subagent) -> WorkerResult:
+            # If this worker already succeeded in a previous run with the same
+            # run_id, return its cached result immediately without making an
+            # API call. This gives free retry semantics: re-run the same
+            # run_id and only the failed workers are re-dispatched.
             if worker.role in cached:
                 return cached[worker.role]
             try:
@@ -98,7 +116,9 @@ class Orchestrator:
                     self.dispatch_async(worker, question), timeout=worker_timeout
                 )
                 wr = WorkerResult(role=worker.role, result=text, error=None)
-                self._append_checkpoint(run_id, wr)  # only cache successes
+                # Only write successful results to the checkpoint. A failed
+                # result is not cached so the worker is retried next time.
+                self._append_checkpoint(run_id, wr)
             except asyncio.TimeoutError:
                 wr = WorkerResult(
                     role=worker.role,
@@ -106,7 +126,9 @@ class Orchestrator:
                     error=f"timeout after {worker_timeout}s",
                 )
             except asyncio.CancelledError:
-                # Cooperative cancellation: re-raise so gather sees it.
+                # Re-raise CancelledError so asyncio.gather can propagate the
+                # cancellation to the caller. Swallowing it would leave the
+                # gather hanging if the outer coroutine is cancelled.
                 raise
             except Exception as exc:
                 wr = WorkerResult(role=worker.role, result=None, error=repr(exc))
@@ -156,6 +178,11 @@ class Orchestrator:
         if path is None:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
+        # JSONL (one JSON object per line, append-only) is chosen over a
+        # single JSON file because appending a line is atomic on most
+        # filesystems. A crash mid-write leaves the file valid up to the last
+        # complete line; there is no read-modify-write step that could corrupt
+        # the file if the process is killed between the read and the write.
         entry = {
             "run_id": run_id,
             "role": wr.role,

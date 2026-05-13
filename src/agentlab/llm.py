@@ -39,6 +39,9 @@ class AgentLoopResult:
     transcript: list[dict[str, Any]] = field(default_factory=list)
 
 
+# Protocol instead of `Anthropic` so tests can pass a lightweight FakeClient
+# (a simple dataclass with a `.messages.create(...)` stub) without importing
+# or instantiating the real SDK. This keeps unit tests fast and offline.
 class _ClientLike(Protocol):
     messages: Any  # duck-typed for the FakeClient used in tests
 
@@ -46,8 +49,10 @@ class _ClientLike(Protocol):
 def _block_to_dict(block: Any) -> dict[str, Any]:
     """Convert an Anthropic SDK content block (or test fake) to a plain dict.
 
-    The SDK returns Pydantic models; tests use simple dataclasses. We accept
-    either by reading the common attributes.
+    The SDK returns Pydantic models (e.g. TextBlock, ToolUseBlock); tests use
+    plain dataclasses. Both have the same attribute names but neither is a
+    plain dict. Normalizing here means the rest of the loop never needs to
+    know which kind it received.
     """
     out: dict[str, Any] = {"type": block.type}
     for attr in ("text", "name", "input", "id", "tool_use_id"):
@@ -89,6 +94,9 @@ def run_agent_loop(
         assistant_blocks = [_block_to_dict(b) for b in response.content]
         messages.append({"role": "assistant", "content": assistant_blocks})
 
+        # Check for != "tool_use" rather than == "end_turn" so that
+        # "max_tokens" and "stop_sequence" also terminate the loop cleanly.
+        # Checking for end_turn would silently swallow truncated responses.
         if response.stop_reason != "tool_use":
             final_text = "".join(
                 b.get("text", "") for b in assistant_blocks if b["type"] == "text"
@@ -103,6 +111,9 @@ def run_agent_loop(
                 continue
             handler = tool_handlers.get(block["name"])
             if handler is None:
+                # Return an error result rather than crashing. Claude sees the
+                # error message and can explain the problem or try a different
+                # tool — much better than an unhandled exception in the loop.
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block["id"],
@@ -117,7 +128,11 @@ def run_agent_loop(
                     "tool_use_id": block["id"],
                     "content": str(result),
                 })
-            except Exception as exc:  # surface tool errors back to the model
+            except Exception as exc:
+                # Surface tool exceptions back to the model as is_error results.
+                # This lets Claude recover (retry with different args, explain
+                # the failure) rather than propagating a Python exception that
+                # would abort the entire loop and lose the transcript.
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block["id"],
@@ -127,4 +142,7 @@ def run_agent_loop(
 
         messages.append({"role": "user", "content": tool_results})
 
+    # Reaching here means Claude called tools on every turn without ever
+    # returning end_turn. This is a runaway loop — raise rather than
+    # returning a partial result that looks like a normal completion.
     raise RuntimeError(f"Agent loop did not terminate within max_turns={max_turns}.")
