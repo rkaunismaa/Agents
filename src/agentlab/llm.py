@@ -43,6 +43,11 @@ class AgentLoopResult:
 # (a simple dataclass with a `.messages.create(...)` stub) without importing
 # or instantiating the real SDK. This keeps unit tests fast and offline.
 class _ClientLike(Protocol):
+    """Structural type accepted by run_agent_loop in place of a real Anthropic client.
+
+    Any object with a `.messages` attribute that has a `.create(...)` method
+    satisfies this protocol — including the FakeClient used in tests.
+    """
     messages: Any  # duck-typed for the FakeClient used in tests
 
 

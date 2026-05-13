@@ -61,6 +61,12 @@ def _python_type_to_jsonschema(annotation: Any) -> dict[str, Any]:
 
 
 def _schema_from_signature(fn: Callable[..., Any]) -> dict[str, Any]:
+    """Build a JSON Schema object from a Python function's parameter annotations.
+
+    Walks the function signature, converts each parameter's type annotation to
+    a JSON Schema fragment, and marks parameters without defaults as required.
+    Used when no explicit `input_model` is provided to the `@tool` decorator.
+    """
     sig = inspect.signature(fn)
     # get_type_hints resolves forward references and PEP 563 stringified
     # annotations (from __future__ import annotations). inspect.signature
@@ -88,6 +94,13 @@ def _schema_from_signature(fn: Callable[..., Any]) -> dict[str, Any]:
 
 
 def _schema_from_pydantic_model(model: type[BaseModel]) -> dict[str, Any]:
+    """Build a JSON Schema object from a Pydantic model, stripping Pydantic-specific metadata.
+
+    Delegates to Pydantic's `model_json_schema()` then removes keys that are
+    valid in Pydantic but can confuse Anthropic's API or downstream validators.
+    Use this when passing a Pydantic model as the `input_model` argument to
+    a tool decorator.
+    """
     schema = model.model_json_schema()
     # Pydantic adds a top-level "title" key (the class name). Anthropic's API
     # ignores it but some downstream JSON schema validators treat it as a
@@ -101,6 +114,7 @@ class ToolRegistry:
     """Holds a set of tools and produces schemas + handlers for the API."""
 
     def __init__(self) -> None:
+        """Create an empty registry ready to accept tool registrations."""
         self._entries: dict[str, dict[str, Any]] = {}
 
     def tool(
@@ -142,9 +156,19 @@ class ToolRegistry:
         return decorator
 
     def schemas(self) -> list[dict[str, Any]]:
+        """Return all registered tool schemas in Anthropic API format.
+
+        Pass the result directly to `client.messages.create(tools=registry.schemas())`.
+        """
         return [entry["schema"] for entry in self._entries.values()]
 
     def handlers(self) -> dict[str, Callable[..., Any]]:
+        """Return a name→callable mapping for dispatching tool calls.
+
+        Pass the result to `run_agent_loop(tool_handlers=registry.handlers())`.
+        The loop looks up each tool-use block's name in this dict to find the
+        Python function to call.
+        """
         return {name: entry["handler"] for name, entry in self._entries.items()}
 
 

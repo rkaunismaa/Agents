@@ -34,6 +34,12 @@ class Subagent:
 
 @dataclass
 class WorkerResult:
+    """The outcome of running one Subagent worker.
+
+    Exactly one of `result` or `error` will be non-None: `result` holds the
+    worker's text output on success; `error` holds a repr of the exception on
+    failure (timeout, API error, or dispatch exception).
+    """
     role: str
     result: Optional[str]
     error: Optional[str]
@@ -60,6 +66,12 @@ class Orchestrator:
         dispatch_async: DispatchAsync | None = None,
         checkpoint_dir: Path | None = None,
     ):
+        """Configure the orchestrator with a worker list and a dispatch strategy.
+
+        At least one of `dispatch` (for run_sync) or `dispatch_async` (for
+        run_async) must be provided. `checkpoint_dir` enables JSONL-based
+        result caching; omit it for stateless runs.
+        """
         if dispatch is None and dispatch_async is None:
             raise ValueError("Provide at least one of dispatch / dispatch_async")
         # Dispatch is injected rather than hardcoded to a Claude API call.
@@ -74,6 +86,12 @@ class Orchestrator:
     # ── sync ───────────────────────────────────────────────────────
 
     def run_sync(self, question: str) -> list[WorkerResult]:
+        """Run all workers one at a time and return their results in worker order.
+
+        Each worker receives the same question. Exceptions are caught and
+        stored as WorkerResult.error rather than propagated, so all workers
+        always run regardless of individual failures.
+        """
         # run_sync exists for NB 11 (sequential orchestrator). NB 12 uses
         # run_async for parallel fan-out. Both modes coexist so the notebooks
         # can show the progression from sequential to parallel.
@@ -96,6 +114,13 @@ class Orchestrator:
         run_id: str | None = None,
         worker_timeout: float = 60.0,
     ) -> list[WorkerResult]:
+        """Run all workers in parallel and return their results in worker order.
+
+        Workers are launched with asyncio.gather; each is individually
+        time-boxed by worker_timeout. If checkpoint_dir is set, successful
+        results are persisted so re-running with the same run_id skips those
+        workers and only retries the failed ones.
+        """
         if self.dispatch_async is None:
             raise RuntimeError("run_async requires `dispatch_async` (awaitable callable)")
         # Auto-generate a short run_id if none provided. hex[:8] = 32-bit
@@ -154,11 +179,16 @@ class Orchestrator:
     # ── checkpoint internals ───────────────────────────────────────
 
     def _checkpoint_path(self, run_id: str) -> Path | None:
+        """Return the JSONL file path for run_id, or None if checkpointing is disabled."""
         if self.checkpoint_dir is None:
             return None
         return self.checkpoint_dir / f"{run_id}.jsonl"
 
     def _load_checkpoint(self, run_id: str) -> dict[str, WorkerResult]:
+        """Read all cached worker results from the checkpoint file into a role→result dict.
+
+        Returns an empty dict if the file does not exist or checkpointing is disabled.
+        """
         path = self._checkpoint_path(run_id)
         if path is None or not path.exists():
             return {}
@@ -174,6 +204,11 @@ class Orchestrator:
         return out
 
     def _append_checkpoint(self, run_id: str, wr: WorkerResult) -> None:
+        """Append a single successful worker result to the JSONL checkpoint file.
+
+        Creates checkpoint_dir and the file if they do not yet exist.
+        Only called for successful WorkerResults; failures are never cached.
+        """
         path = self._checkpoint_path(run_id)
         if path is None:
             return

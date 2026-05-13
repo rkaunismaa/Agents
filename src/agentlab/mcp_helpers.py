@@ -54,6 +54,7 @@ class MCPToolRouter:
     """
 
     def __init__(self, session: Any):
+        """Wrap an MCP ClientSession; call refresh() before routing any tool calls."""
         self._session = session
         # `refresh()` is separate from `__init__` because `__init__` is
         # synchronous but `session.list_tools()` is async. Calling an async
@@ -64,10 +65,20 @@ class MCPToolRouter:
         self._known: set[str] = set()
 
     async def refresh(self) -> None:
+        """Fetch the current tool list from the MCP server and update the known-tools set.
+
+        Call this once after construction and again if the server's tool list
+        may have changed (e.g. after a server reload).
+        """
         listed = await self._session.list_tools()
         self._known = {t.name for t in listed.tools}
 
     def knows(self, name: str) -> bool:
+        """Return True if name is a tool this router can handle.
+
+        Use this to gate calls to `router.call()` when the agent loop manages
+        tools from multiple sources (local handlers, MCP tools, managed tools).
+        """
         # The agent loop may have tools from multiple sources (local tools,
         # MCP tools, Anthropic-managed tools like web_search). `knows()` lets
         # the loop decide which router to forward a call to without the router
@@ -75,6 +86,11 @@ class MCPToolRouter:
         return name in self._known
 
     async def call(self, name: str, arguments: dict[str, Any]) -> str:
+        """Execute a tool call on the MCP server and return the text result.
+
+        Raises RuntimeError if the server signals an error (isError=True), so
+        the agent loop can catch it and return an is_error tool_result to Claude.
+        """
         result = await self._session.call_tool(name, arguments)
         # MCP tool results can contain multiple content blocks (text, image,
         # resource). We join only text blocks because image/resource content

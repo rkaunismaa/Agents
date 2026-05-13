@@ -20,6 +20,10 @@ from pydantic import BaseModel
 
 
 def _approx_tokens(text: str) -> int:
+    """Estimate the token count for a plain-text string.
+
+    Returns at least 1 so callers never divide-by-zero or allocate zero budget.
+    """
     # ~4 chars per token is the standard rule of thumb for English text with
     # Claude/GPT tokenizers. Exact tokenization would require the Anthropic
     # tokenizer library, which is an unnecessary dependency for buffer sizing.
@@ -27,6 +31,11 @@ def _approx_tokens(text: str) -> int:
 
 
 def _message_tokens(message: dict) -> int:
+    """Estimate the token count for a single Anthropic message dict.
+
+    Handles both plain-string content and structured content-block lists
+    (the two shapes Anthropic messages can take).
+    """
     content = message.get("content", "")
     if isinstance(content, str):
         return _approx_tokens(content)
@@ -44,16 +53,24 @@ class ConversationBuffer:
     """
 
     def __init__(self, max_tokens: int = 4096) -> None:
+        """Create a buffer that will hold at most max_tokens worth of messages."""
         self.max_tokens = max_tokens
         self._messages: list[dict] = []
 
     def append(self, message: dict) -> None:
+        """Add a message to the end of the buffer; does not enforce the token limit."""
         self._messages.append(message)
 
     def messages(self) -> list[dict]:
+        """Return a copy of all stored messages in chronological order, without truncation."""
         return list(self._messages)
 
     def truncate(self) -> list[dict]:
+        """Return the most recent messages that fit within max_tokens.
+
+        Older messages are dropped when the budget is exceeded. The result is
+        always a contiguous tail of the full message list, preserving turn order.
+        """
         # Walk from newest to oldest, keeping messages until the budget runs
         # out. This is a recency bias: for agent conversations the most recent
         # exchanges are more relevant than older context.
@@ -95,15 +112,19 @@ class KeyValueMemory:
     """Long-term key-value store with JSON persistence."""
 
     def __init__(self) -> None:
+        """Create an empty in-memory store."""
         self._store: dict[str, Any] = {}
 
     def set(self, key: str, value: Any) -> None:
+        """Store value under key, overwriting any existing value for that key."""
         self._store[key] = value
 
     def get(self, key: str, default: Any = None) -> Any:
+        """Retrieve the value stored under key, or default if the key is absent."""
         return self._store.get(key, default)
 
     def keys(self) -> list[str]:
+        """Return a snapshot of all currently stored key names."""
         return list(self._store.keys())
 
     def save(self, path: Path) -> None:
@@ -111,6 +132,7 @@ class KeyValueMemory:
         Path(path).write_text(json.dumps(self._store, indent=2), encoding="utf-8")
 
     def load(self, path: Path) -> None:
+        """Replace the store's contents with key-value pairs read from a JSON file."""
         self._store = json.loads(Path(path).read_text(encoding="utf-8"))
 
 
@@ -128,6 +150,12 @@ class Match(BaseModel):
 
 
 def _default_embedder(model_name: str = "all-MiniLM-L6-v2"):
+    """Build and return a sentence-transformers embedding function.
+
+    Returns a callable that takes a list of strings and returns a list of
+    float vectors. The model is loaded once and closed over; subsequent calls
+    reuse the loaded weights.
+    """
     # sentence_transformers is a heavy import (~500 ms, large model files).
     # Lazy-loading it here means notebooks that never use SemanticMemory
     # don't pay the import cost at module load time.
@@ -184,6 +212,7 @@ class SemanticMemory:
         self._next_id = 0
 
     def add(self, text: str, metadata: dict | None = None) -> str:
+        """Embed text and add it to the vector store; return the assigned document ID."""
         doc_id = f"doc-{self._next_id}"
         self._next_id += 1
         embedding = self._embedder([text])[0]
@@ -196,6 +225,7 @@ class SemanticMemory:
         return doc_id
 
     def query(self, text: str, top_k: int = 3) -> list[Match]:
+        """Return the top_k stored documents most similar to text, ranked by cosine similarity."""
         embedding = self._embedder([text])[0]
         result = self._collection.query(
             query_embeddings=[list(embedding)],
